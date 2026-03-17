@@ -32,8 +32,9 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
 
   // Strategy 1: Any line containing a file-path-like string followed by a code fence
   // This is intentionally broad to catch: **`path`**, **path**, `path`, ### path, etc.
+  // The path can be followed by extra text like " — Updated to:" which we ignore
   const broadPattern =
-    /^[#*`\s]*([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)[`*\s]*$/gm;
+    /^[#*`\s]*([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)[`*\s]*(?:.*)?$/gm;
 
   // Find all potential file path lines and check if a code fence follows
   let pathMatch;
@@ -58,6 +59,45 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
     while ((match = commentPattern.exec(responseText)) !== null) {
       addFile(match[1], match[2]);
     }
+  }
+
+  // Strategy 3: Inline file path in bold/backtick anywhere on a line, followed by code fence
+  // Catches: **`src/app/page.tsx`** — Updated to:
+  if (files.length === 0) {
+    const inlinePattern =
+      /\*{0,2}`([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)`\*{0,2}[^\n]*/gm;
+
+    let match;
+    while ((match = inlinePattern.exec(responseText)) !== null) {
+      const filePath = match[1];
+      const afterMatch = responseText.slice(match.index + match[0].length);
+      const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
+      if (fenceMatch) {
+        addFile(filePath, fenceMatch[1]);
+      }
+    }
+  }
+
+  // Strategy 4: File path in "File:" or "Filename:" prefix followed by code fence
+  if (files.length === 0) {
+    const filePrefix =
+      /(?:File|Filename|Path):\s*`?([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)`?/gm;
+
+    let match;
+    while ((match = filePrefix.exec(responseText)) !== null) {
+      const filePath = match[1];
+      const afterMatch = responseText.slice(match.index + match[0].length);
+      const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
+      if (fenceMatch) {
+        addFile(filePath, fenceMatch[1]);
+      }
+    }
+  }
+
+  console.log(`[FileParser] Parsed ${files.length} file(s) from response (${responseText.length} chars)`);
+  if (files.length === 0 && responseText.includes("```")) {
+    console.log(`[FileParser] Response contains code fences but no file paths were matched.`);
+    console.log(`[FileParser] First 1000 chars:\n${responseText.slice(0, 1000)}`);
   }
 
   return files;

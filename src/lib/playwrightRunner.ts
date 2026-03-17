@@ -295,10 +295,11 @@ async function extractResponse(page: Page): Promise<string> {
         const elem = child as Element;
         const tag = elem.tagName.toLowerCase();
 
-        // Code blocks (pre > code)
-        if (tag === "pre") {
-          const code = elem.querySelector("code");
-          const codeText = code?.textContent || elem.textContent || "";
+        // Code blocks (pre > code) — also handle wrapper divs around pre
+        if (tag === "pre" || (elem.querySelector("pre") && !elem.querySelector("p"))) {
+          const pre = tag === "pre" ? elem : elem.querySelector("pre")!;
+          const code = pre.querySelector("code");
+          const codeText = code?.textContent || pre.textContent || "";
           // Try to detect language from class
           const langClass = code?.className?.match(/language-(\w+)/);
           const lang = langClass ? langClass[1] : "";
@@ -312,16 +313,18 @@ async function extractResponse(page: Page): Promise<string> {
           continue;
         }
 
-        // Bold
+        // Bold — recurse into children to preserve nested formatting
         if (tag === "strong" || tag === "b") {
-          parts.push(`**${elem.textContent || ""}**`);
+          const inner = htmlToMarkdown(elem);
+          parts.push(`**${inner}**`);
           continue;
         }
 
         // Headings
         if (/^h[1-6]$/.test(tag)) {
           const level = parseInt(tag[1]);
-          parts.push(`\n${"#".repeat(level)} ${elem.textContent || ""}\n`);
+          const inner = htmlToMarkdown(elem);
+          parts.push(`\n${"#".repeat(level)} ${inner}\n`);
           continue;
         }
 
@@ -344,19 +347,56 @@ async function extractResponse(page: Page): Promise<string> {
       return parts.join("");
     }
 
-    const selectors = [
-      '[data-testid="chat-message-content"]:last-of-type',
-      ".prose:last-of-type",
-      '[class*="message"]:last-of-type .prose',
+    // Collect all response parts (main message + any artifacts)
+    const responseParts: string[] = [];
+
+    // 1. Try to get the main chat message content
+    const messageSelectors = [
+      '[data-testid="chat-message-content"]',
+      ".prose",
+      '[class*="message-content"]',
       '[class*="response"]',
     ];
 
-    for (const selector of selectors) {
+    for (const selector of messageSelectors) {
       const elements = document.querySelectorAll(selector);
       if (elements.length > 0) {
         const last = elements[elements.length - 1];
-        return htmlToMarkdown(last);
+        responseParts.push(htmlToMarkdown(last));
+        break;
       }
+    }
+
+    // 2. Also try to capture artifact/canvas content (Claude puts code in side panels)
+    const artifactSelectors = [
+      '[data-testid="artifact-content"]',
+      '[data-testid="code-content"]',
+      '[class*="artifact"] pre code',
+      '[class*="canvas"] pre code',
+      '[class*="code-block-container"] code',
+    ];
+
+    for (const selector of artifactSelectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const elem of elements) {
+        const text = elem.textContent || "";
+        if (text.length > 50) {
+          // Try to find a filename associated with this artifact
+          const parent = elem.closest('[class*="artifact"], [class*="canvas"], [class*="code-block"]');
+          const titleEl = parent?.querySelector('[class*="title"], [class*="filename"], [class*="name"]');
+          const title = titleEl?.textContent?.trim() || "";
+
+          if (title && title.includes(".")) {
+            responseParts.push(`\n**\`${title}\`**\n\`\`\`\n${text}\n\`\`\`\n`);
+          } else {
+            responseParts.push(`\n\`\`\`\n${text}\n\`\`\`\n`);
+          }
+        }
+      }
+    }
+
+    if (responseParts.length > 0) {
+      return responseParts.join("\n");
     }
 
     // Fallback: get longest text block

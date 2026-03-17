@@ -95,35 +95,32 @@ export async function executeAgent(
       codeBlocks,
     });
 
-    // Auto-apply files for the Implementer agent
-    if (agent.name === "Implementer") {
-      // Log first 300 chars of response for debugging
-      console.log(`[Implementer] Response preview (first 300 chars):\n${response.slice(0, 300)}`);
-      appendAgentLog(taskId, agent.id, "Parsing files from response...");
-      const parsedFiles = parseFilesFromResponse(response);
+    // Auto-apply files from agent response
+    console.log(`[${agent.name}] Response preview (first 500 chars):\n${response.slice(0, 500)}`);
+    appendAgentLog(taskId, agent.id, "Parsing files from response...");
+    const parsedFiles = parseFilesFromResponse(response);
 
-      if (parsedFiles.length > 0) {
-        appendAgentLog(
-          taskId,
-          agent.id,
-          `Found ${parsedFiles.length} file(s): ${parsedFiles.map((f) => f.filePath).join(", ")}`
-        );
-        const result = await writeFilesToProject(project.dir, parsedFiles);
+    if (parsedFiles.length > 0) {
+      appendAgentLog(
+        taskId,
+        agent.id,
+        `Found ${parsedFiles.length} file(s): ${parsedFiles.map((f) => f.filePath).join(", ")}`
+      );
+      const result = await writeFilesToProject(project.dir, parsedFiles);
 
-        for (const file of result.written) {
-          appendAgentLog(taskId, agent.id, `Wrote: ${file}`);
-        }
-        for (const err of result.errors) {
-          appendAgentLog(taskId, agent.id, `Failed to write ${err.file}: ${err.error}`);
-        }
-        appendAgentLog(
-          taskId,
-          agent.id,
-          `Applied ${result.written.length} file(s) to ${project.dir}`
-        );
-      } else {
-        appendAgentLog(taskId, agent.id, "No files with path headers found to apply.");
+      for (const file of result.written) {
+        appendAgentLog(taskId, agent.id, `Wrote: ${file}`);
       }
+      for (const err of result.errors) {
+        appendAgentLog(taskId, agent.id, `Failed to write ${err.file}: ${err.error}`);
+      }
+      appendAgentLog(
+        taskId,
+        agent.id,
+        `Applied ${result.written.length} file(s) to ${project.dir}`
+      );
+    } else {
+      appendAgentLog(taskId, agent.id, "No files with path headers found to apply.");
     }
 
     appendAgentLog(taskId, agent.id, "Agent completed successfully.");
