@@ -6,14 +6,34 @@ import { parseFilesFromResponse, writeFilesToProject } from "./fileWriter";
 
 const OUTPUT_INSTRUCTIONS = `
 
-IMPORTANT OUTPUT FORMAT: When outputting code, ALWAYS include the full file path as a header above each code block, like:
+CRITICAL OUTPUT FORMAT — YOU MUST FOLLOW THIS EXACTLY:
+
+For EVERY code block you output, you MUST include the file path in TWO places:
+1. As a bold header ABOVE the code block
+2. As a special comment on the VERY FIRST LINE inside the code block
+
+Example (follow this format exactly):
 
 **\`src/components/MyComponent.tsx\`**
 \`\`\`tsx
-// full file contents here
+// @file: src/components/MyComponent.tsx
+"use client";
+import React from "react";
+// ... rest of the full file contents
 \`\`\`
 
-This ensures each file can be identified and applied to the project.`;
+**\`src/app/globals.css\`**
+\`\`\`css
+/* @file: src/app/globals.css */
+:root {
+  --background: #ffffff;
+}
+\`\`\`
+
+RULES:
+- The first line of EVERY code block MUST be a comment with "// @file: <path>" (or "/* @file: <path> */" for CSS)
+- Output the COMPLETE file contents, not snippets
+- Do NOT skip any files — output ALL files that need to change`;
 
 const AGENT_ROLES = [
   {
@@ -59,11 +79,13 @@ export async function executeAgent(
 ): Promise<void> {
   const role = AGENT_ROLES.find((r) => r.name === agent.name);
   const prompt =
+    OUTPUT_INSTRUCTIONS +
+    "\n\n" +
     (role?.prefix || "") +
     taskDescription +
     "\n\n" +
     contextBlock +
-    OUTPUT_INSTRUCTIONS;
+    "\n\nREMINDER: Every code block MUST have '// @file: <path>' as the VERY FIRST LINE. Output COMPLETE file contents, not snippets.";
 
   updateAgent(taskId, agent.id, { status: "running" });
   appendAgentLog(taskId, agent.id, `Agent "${agent.name}" starting...`);

@@ -26,42 +26,49 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
     const clean = filePath.trim().replace(/^[`*#\s]+|[`*\s]+$/g, "");
     if (clean && content && isValidFilePath(clean) && !seen.has(clean)) {
       seen.add(clean);
-      files.push({ filePath: clean, content: content.trimEnd() + "\n" });
+      // Remove the @file comment from the content before writing
+      const cleanedContent = content
+        .replace(/^\/\/\s*@file:\s*\S+\s*\n/, "")
+        .replace(/^\/\*\s*@file:\s*\S+\s*\*\/\s*\n/, "");
+      files.push({ filePath: clean, content: cleanedContent.trimEnd() + "\n" });
     }
   }
 
-  // Strategy 1: Any line containing a file-path-like string followed by a code fence
-  // This is intentionally broad to catch: **`path`**, **path**, `path`, ### path, etc.
-  // The path can be followed by extra text like " — Updated to:" which we ignore
-  const broadPattern =
-    /^[#*`\s]*([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)[`*\s]*(?:.*)?$/gm;
+  // ═══ Strategy 1 (PRIMARY): @file: marker inside code blocks ═══
+  // Matches: ```tsx\n// @file: src/app/page.tsx\n...```
+  // or: ```css\n/* @file: src/app/globals.css */\n...```
+  const atFilePattern =
+    /```[\w]*\n(?:\/\/\s*@file:\s*([\w/.:-]+\.\w+)|\/\*\s*@file:\s*([\w/.:-]+\.\w+)\s*\*\/)\s*\n([\s\S]*?)```/g;
 
-  // Find all potential file path lines and check if a code fence follows
-  let pathMatch;
-  while ((pathMatch = broadPattern.exec(responseText)) !== null) {
-    const filePath = pathMatch[1];
-    const afterMatch = responseText.slice(pathMatch.index + pathMatch[0].length);
-
-    // Look for a code fence within the next few lines (allowing blank lines)
-    const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
-    if (fenceMatch) {
-      addFile(filePath, fenceMatch[1]);
-    }
+  let match;
+  while ((match = atFilePattern.exec(responseText)) !== null) {
+    const filePath = match[1] || match[2];
+    const content = (match[1] ? `// @file: ${filePath}\n` : `/* @file: ${filePath} */\n`) + match[3];
+    addFile(filePath, content);
   }
 
-  // Strategy 2: Code block with a file path comment on the first line
-  // Matches: ```tsx\n// src/components/Foo.tsx\n...```
+  // ═══ Strategy 2: File path header above code fence ═══
+  // Catches: **`src/app/page.tsx`**, ### src/app/page.tsx, etc.
   if (files.length === 0) {
-    const commentPattern =
-      /```[\w]*\n\/\/\s*([\w/.:-]+\.\w+)\n([\s\S]*?)```/g;
+    const broadPattern =
+      /^[#*`\s]*([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)[`*\s]*(?:.*)?$/gm;
 
-    let match;
-    while ((match = commentPattern.exec(responseText)) !== null) {
-      addFile(match[1], match[2]);
+    let pathMatch;
+    while ((pathMatch = broadPattern.exec(responseText)) !== null) {
+      const filePath = pathMatch[1];
+      const afterMatch = responseText.slice(
+        pathMatch.index + pathMatch[0].length
+      );
+      const fenceMatch = afterMatch.match(
+        /^\s*\n\s*```[\w]*\n([\s\S]*?)```/
+      );
+      if (fenceMatch) {
+        addFile(filePath, fenceMatch[1]);
+      }
     }
   }
 
-  // Strategy 3: Inline file path in bold/backtick anywhere on a line, followed by code fence
+  // ═══ Strategy 3: Inline file path in bold/backtick, followed by code fence ═══
   // Catches: **`src/app/page.tsx`** — Updated to:
   if (files.length === 0) {
     const inlinePattern =
@@ -70,34 +77,81 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
     let match;
     while ((match = inlinePattern.exec(responseText)) !== null) {
       const filePath = match[1];
-      const afterMatch = responseText.slice(match.index + match[0].length);
-      const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
+      const afterMatch = responseText.slice(
+        match.index + match[0].length
+      );
+      const fenceMatch = afterMatch.match(
+        /^\s*\n\s*```[\w]*\n([\s\S]*?)```/
+      );
       if (fenceMatch) {
         addFile(filePath, fenceMatch[1]);
       }
     }
   }
 
-  // Strategy 4: File path in "File:" or "Filename:" prefix followed by code fence
+  // ═══ Strategy 4: Code block with // path or // File: path on first line ═══
   if (files.length === 0) {
-    const filePrefix =
-      /(?:File|Filename|Path):\s*`?([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)`?/gm;
+    const commentPattern =
+      /```[\w]*\n\/\/\s*(?:File:\s*)?([\w/.:-]+\.\w+)\n([\s\S]*?)```/g;
 
     let match;
-    while ((match = filePrefix.exec(responseText)) !== null) {
-      const filePath = match[1];
-      const afterMatch = responseText.slice(match.index + match[0].length);
-      const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
-      if (fenceMatch) {
-        addFile(filePath, fenceMatch[1]);
+    while ((match = commentPattern.exec(responseText)) !== null) {
+      addFile(match[1], match[2]);
+    }
+  }
+
+  // ═══ Strategy 5: File path mentioned ANYWHERE in text, with code blocks ═══
+  // Scan full response for file paths in prose, associate with nearest code block
+  if (files.length === 0) {
+    const allPaths: { path: string; index: number }[] = [];
+    const pathInText =
+      /`([\w./\-]+\/[\w.\-]+\.\w+)`/g;
+    let m;
+    while ((m = pathInText.exec(responseText)) !== null) {
+      if (isValidFilePath(m[1])) {
+        allPaths.push({ path: m[1], index: m.index });
+      }
+    }
+
+    const allCodeBlocks: { content: string; index: number }[] = [];
+    const codeBlockPattern = /```[\w]*\n([\s\S]*?)```/g;
+    while ((m = codeBlockPattern.exec(responseText)) !== null) {
+      if (m[1].trim().length > 50) {
+        allCodeBlocks.push({ content: m[1], index: m.index });
+      }
+    }
+
+    // Match each code block to the nearest preceding file path
+    for (const block of allCodeBlocks) {
+      let bestPath = "";
+      let bestDist = Infinity;
+      for (const p of allPaths) {
+        const dist = block.index - p.index;
+        if (dist > 0 && dist < bestDist) {
+          bestDist = dist;
+          bestPath = p.path;
+        }
+      }
+      if (bestPath) {
+        addFile(bestPath, block.content);
       }
     }
   }
 
-  console.log(`[FileParser] Parsed ${files.length} file(s) from response (${responseText.length} chars)`);
+  console.log(
+    `[FileParser] Parsed ${files.length} file(s) from response (${responseText.length} chars)`
+  );
   if (files.length === 0 && responseText.includes("```")) {
-    console.log(`[FileParser] Response contains code fences but no file paths were matched.`);
-    console.log(`[FileParser] First 1000 chars:\n${responseText.slice(0, 1000)}`);
+    console.log(
+      `[FileParser] Response has code fences but no file paths matched.`
+    );
+    // Log context around the first code fence
+    const fenceIdx = responseText.indexOf("```");
+    const contextStart = Math.max(0, fenceIdx - 200);
+    const contextEnd = Math.min(responseText.length, fenceIdx + 300);
+    console.log(
+      `[FileParser] Context around first fence:\n${responseText.slice(contextStart, contextEnd)}`
+    );
   }
 
   return files;
