@@ -162,9 +162,24 @@ export async function runPlaywrightAgent(
       throw new Error("Could not find chat input element");
     }
 
-    // Type the prompt
+    // Paste the prompt via clipboard (typing is unreliable on contenteditable)
     await input.click();
-    await page.keyboard.type(prompt, { delay: 10 });
+    await page.evaluate(
+      (text) => {
+        const dt = new DataTransfer();
+        dt.setData("text/plain", text);
+        const pasteEvent = new ClipboardEvent("paste", {
+          clipboardData: dt,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.activeElement?.dispatchEvent(pasteEvent);
+      },
+      prompt
+    );
+
+    // Small delay to let the UI process the paste
+    await page.waitForTimeout(500);
 
     // Submit
     callbacks.onLog("Submitting prompt...");
