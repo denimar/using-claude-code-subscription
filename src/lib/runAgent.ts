@@ -1,4 +1,4 @@
-import { Agent } from "./types";
+import { Agent, Project } from "./types";
 import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
 
@@ -40,10 +40,12 @@ export function createAgents(taskId: string, count: number = 3): Agent[] {
 export async function executeAgent(
   taskId: string,
   agent: Agent,
-  taskDescription: string
+  taskDescription: string,
+  project: Project
 ): Promise<void> {
   const role = AGENT_ROLES.find((r) => r.name === agent.name);
-  const prompt = (role?.prefix || "") + taskDescription;
+  const projectContext = `\n\nProject: "${project.name}" located at ${project.dir}\n`;
+  const prompt = (role?.prefix || "") + taskDescription + projectContext;
 
   updateAgent(taskId, agent.id, { status: "running" });
   appendAgentLog(taskId, agent.id, `Agent "${agent.name}" starting...`);
@@ -98,9 +100,10 @@ function extractCodeBlocks(text: string): string[] {
 export async function runAllAgents(
   taskId: string,
   agents: Agent[],
-  taskDescription: string
+  taskDescription: string,
+  project: Project
 ): Promise<void> {
   await Promise.all(
-    agents.map((agent) => executeAgent(taskId, agent, taskDescription))
+    agents.map((agent) => executeAgent(taskId, agent, taskDescription, project))
   );
 }

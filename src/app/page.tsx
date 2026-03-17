@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Task } from "@/lib/types";
+import { Task, PROJECTS } from "@/lib/types";
 import { TaskInput } from "@/components/TaskInput";
 import { AgentPanel } from "@/components/AgentPanel";
+import { ProjectSelector } from "@/components/ProjectSelector";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle } from "lucide-react";
 
@@ -12,6 +13,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cookiesReady, setCookiesReady] = useState<boolean | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(PROJECTS[0].id);
 
   // Check if cookies exist on mount
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function Home() {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, agentCount: 3 }),
+        body: JSON.stringify({ description, agentCount: 3, projectId: selectedProjectId }),
       });
 
       if (!res.ok) {
@@ -74,7 +76,7 @@ export default function Home() {
       alert("Failed to create task");
       setIsSubmitting(false);
     }
-  }, []);
+  }, [selectedProjectId]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -113,6 +115,15 @@ export default function Home() {
           </div>
         )}
 
+        {/* Project selector */}
+        <div className="mb-4">
+          <ProjectSelector
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            disabled={isSubmitting}
+          />
+        </div>
+
         {/* Task input */}
         <div className="mb-8">
           <TaskInput onSubmit={handleSubmit} isLoading={isSubmitting} />
@@ -125,7 +136,8 @@ export default function Home() {
               <h2 className="text-lg font-semibold">Task: {task.description}</h2>
               <p className="text-xs text-muted-foreground">
                 {new Date(task.createdAt).toLocaleString()} &middot;{" "}
-                {task.agents.length} agent(s)
+                {task.agents.length} agent(s) &middot;{" "}
+                {PROJECTS.find((p) => p.id === task.projectId)?.name || task.projectId}
               </p>
             </div>
 

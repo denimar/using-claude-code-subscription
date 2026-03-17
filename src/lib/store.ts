@@ -3,11 +3,12 @@ import { Task, Agent, AgentLog } from "./types";
 // In-memory store for tasks
 const tasks = new Map<string, Task>();
 
-export function createTask(description: string): Task {
+export function createTask(description: string, projectId: string): Task {
   const id = crypto.randomUUID();
   const task: Task = {
     id,
     description,
+    projectId,
     agents: [],
     createdAt: Date.now(),
   };

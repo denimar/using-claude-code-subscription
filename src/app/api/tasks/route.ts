@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createTask, getAllTasks, addAgentToTask } from "@/lib/store";
 import { createAgents, runAllAgents } from "@/lib/runAgent";
+import { PROJECTS } from "@/lib/types";
 
 export async function GET() {
   return NextResponse.json(getAllTasks());
 }
 
 export async function POST(request: Request) {
-  const { description, agentCount = 3 } = await request.json();
+  const { description, agentCount = 3, projectId } = await request.json();
 
   if (!description || typeof description !== "string") {
     return NextResponse.json(
@@ -16,7 +17,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const task = createTask(description);
+  const project = PROJECTS.find((p) => p.id === projectId);
+  if (!project) {
+    return NextResponse.json(
+      { error: "Invalid project selected" },
+      { status: 400 }
+    );
+  }
+
+  const task = createTask(description, projectId);
   const agents = createAgents(task.id, agentCount);
 
   // Add agents to task
@@ -25,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   // Run agents in background (don't await)
-  runAllAgents(task.id, agents, description).catch((err) => {
+  runAllAgents(task.id, agents, description, project).catch((err) => {
     console.error("Agent execution error:", err);
   });
 
