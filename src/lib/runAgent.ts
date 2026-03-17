@@ -2,6 +2,7 @@ import { Agent, Project } from "./types";
 import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
 import { getProjectContext } from "./projectContext";
+import { parseFilesFromResponse, writeFilesToProject } from "./fileWriter";
 
 const OUTPUT_INSTRUCTIONS = `
 
@@ -53,7 +54,8 @@ export async function executeAgent(
   taskId: string,
   agent: Agent,
   taskDescription: string,
-  contextBlock: string
+  contextBlock: string,
+  project: Project
 ): Promise<void> {
   const role = AGENT_ROLES.find((r) => r.name === agent.name);
   const prompt =
@@ -92,6 +94,36 @@ export async function executeAgent(
       output: response,
       codeBlocks,
     });
+
+    // Auto-apply files for the Implementer agent
+    if (agent.name === "Implementer") {
+      appendAgentLog(taskId, agent.id, "Parsing files from response...");
+      const parsedFiles = parseFilesFromResponse(response);
+
+      if (parsedFiles.length > 0) {
+        appendAgentLog(
+          taskId,
+          agent.id,
+          `Found ${parsedFiles.length} file(s): ${parsedFiles.map((f) => f.filePath).join(", ")}`
+        );
+        const result = await writeFilesToProject(project.dir, parsedFiles);
+
+        for (const file of result.written) {
+          appendAgentLog(taskId, agent.id, `Wrote: ${file}`);
+        }
+        for (const err of result.errors) {
+          appendAgentLog(taskId, agent.id, `Failed to write ${err.file}: ${err.error}`);
+        }
+        appendAgentLog(
+          taskId,
+          agent.id,
+          `Applied ${result.written.length} file(s) to ${project.dir}`
+        );
+      } else {
+        appendAgentLog(taskId, agent.id, "No files with path headers found to apply.");
+      }
+    }
+
     appendAgentLog(taskId, agent.id, "Agent completed successfully.");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -127,7 +159,7 @@ export async function runAllAgents(
 
   await Promise.all(
     agents.map((agent) =>
-      executeAgent(taskId, agent, taskDescription, contextBlock)
+      executeAgent(taskId, agent, taskDescription, contextBlock, project)
     )
   );
 }
