@@ -278,6 +278,72 @@ async function waitForResponseComplete(
 
 async function extractResponse(page: Page): Promise<string> {
   const response = await page.evaluate(() => {
+    /**
+     * Convert Claude's rendered HTML response back to markdown-like text.
+     * This preserves code blocks with file path headers so the file parser can work.
+     */
+    function htmlToMarkdown(el: Element): string {
+      const parts: string[] = [];
+
+      for (const child of el.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          parts.push(child.textContent || "");
+          continue;
+        }
+
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        const elem = child as Element;
+        const tag = elem.tagName.toLowerCase();
+
+        // Code blocks (pre > code)
+        if (tag === "pre") {
+          const code = elem.querySelector("code");
+          const codeText = code?.textContent || elem.textContent || "";
+          // Try to detect language from class
+          const langClass = code?.className?.match(/language-(\w+)/);
+          const lang = langClass ? langClass[1] : "";
+          parts.push(`\n\`\`\`${lang}\n${codeText}\n\`\`\`\n`);
+          continue;
+        }
+
+        // Inline code
+        if (tag === "code") {
+          parts.push(`\`${elem.textContent || ""}\``);
+          continue;
+        }
+
+        // Bold
+        if (tag === "strong" || tag === "b") {
+          parts.push(`**${elem.textContent || ""}**`);
+          continue;
+        }
+
+        // Headings
+        if (/^h[1-6]$/.test(tag)) {
+          const level = parseInt(tag[1]);
+          parts.push(`\n${"#".repeat(level)} ${elem.textContent || ""}\n`);
+          continue;
+        }
+
+        // Paragraphs
+        if (tag === "p") {
+          parts.push(`\n${htmlToMarkdown(elem)}\n`);
+          continue;
+        }
+
+        // List items
+        if (tag === "li") {
+          parts.push(`\n- ${htmlToMarkdown(elem)}`);
+          continue;
+        }
+
+        // Recurse for other elements
+        parts.push(htmlToMarkdown(elem));
+      }
+
+      return parts.join("");
+    }
+
     const selectors = [
       '[data-testid="chat-message-content"]:last-of-type',
       ".prose:last-of-type",
@@ -289,10 +355,11 @@ async function extractResponse(page: Page): Promise<string> {
       const elements = document.querySelectorAll(selector);
       if (elements.length > 0) {
         const last = elements[elements.length - 1];
-        return last.textContent || "";
+        return htmlToMarkdown(last);
       }
     }
 
+    // Fallback: get longest text block
     const allDivs = document.querySelectorAll("div");
     let longest = "";
     for (const div of allDivs) {

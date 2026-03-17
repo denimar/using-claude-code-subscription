@@ -97,6 +97,8 @@ export async function executeAgent(
 
     // Auto-apply files for the Implementer agent
     if (agent.name === "Implementer") {
+      // Log first 300 chars of response for debugging
+      console.log(`[Implementer] Response preview (first 300 chars):\n${response.slice(0, 300)}`);
       appendAgentLog(taskId, agent.id, "Parsing files from response...");
       const parsedFiles = parseFilesFromResponse(response);
 

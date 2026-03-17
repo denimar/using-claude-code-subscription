@@ -20,19 +20,38 @@ export interface ParsedFile {
  */
 export function parseFilesFromResponse(responseText: string): ParsedFile[] {
   const files: ParsedFile[] = [];
+  const seen = new Set<string>();
 
-  // Match a file path header followed by a code block
-  // The file path can appear in several formats before a code fence
-  const pattern =
-    /(?:\*{0,2}`([^`]+\.\w+)`\*{0,2}|#{1,4}\s+(`?([^\n`]+\.\w+)`?)|\/\/\s*(?:File:\s*)([^\n]+\.\w+))\s*\n\s*```[\w]*\n([\s\S]*?)```/g;
+  // Strategy 1: File path header (various formats) followed by code fence
+  // Matches: **`path`**, `path`, ### path, // File: path — then ```lang\n...```
+  const headerPattern =
+    /(?:\*{0,2}`([^`\n]+\.\w+)`\*{0,2}|#{1,4}\s+`?([^\n`]+\.\w+)`?|\/\/\s*(?:File:\s*)([^\n]+\.\w+))\s*\n\s*```[\w]*\n([\s\S]*?)```/g;
 
   let match;
-  while ((match = pattern.exec(responseText)) !== null) {
-    const filePath = (match[1] || match[3] || match[4] || "").trim();
-    const content = match[5];
+  while ((match = headerPattern.exec(responseText)) !== null) {
+    const filePath = (match[1] || match[2] || match[3] || "").trim();
+    const content = match[4];
 
-    if (filePath && content && isValidFilePath(filePath)) {
+    if (filePath && content && isValidFilePath(filePath) && !seen.has(filePath)) {
+      seen.add(filePath);
       files.push({ filePath, content: content.trimEnd() + "\n" });
+    }
+  }
+
+  // Strategy 2: Code block with a file path comment on the first line
+  // Matches: ```tsx\n// src/components/Foo.tsx\n...```
+  if (files.length === 0) {
+    const commentPattern =
+      /```[\w]*\n\/\/\s*([\w/.:-]+\.\w+)\n([\s\S]*?)```/g;
+
+    while ((match = commentPattern.exec(responseText)) !== null) {
+      const filePath = match[1].trim();
+      const content = match[2];
+
+      if (filePath && content && isValidFilePath(filePath) && !seen.has(filePath)) {
+        seen.add(filePath);
+        files.push({ filePath, content: content.trimEnd() + "\n" });
+      }
     }
   }
 
