@@ -1,22 +1,34 @@
 import { Agent, Project } from "./types";
 import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
+import { getProjectContext } from "./projectContext";
+
+const OUTPUT_INSTRUCTIONS = `
+
+IMPORTANT OUTPUT FORMAT: When outputting code, ALWAYS include the full file path as a header above each code block, like:
+
+**\`src/components/MyComponent.tsx\`**
+\`\`\`tsx
+// full file contents here
+\`\`\`
+
+This ensures each file can be identified and applied to the project.`;
 
 const AGENT_ROLES = [
   {
     name: "Architect",
     prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. Produce your full output immediately.\n\nYou are a senior software architect. You must plan the implementation and write the core structure for the following feature in a Next.js 16 app (App Router, React 19, TypeScript, Tailwind CSS v4). Output a detailed implementation plan with file structure, component hierarchy, and core code scaffolding. Be specific and produce complete code.\n\nFeature to architect: ",
+      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a senior software architect. Plan the implementation and write the core structure for the following feature. Study the project context provided below to understand the existing codebase, then output a detailed implementation plan with file structure, component hierarchy, and core code scaffolding that fits the existing project.\n\nFeature to architect: ",
   },
   {
     name: "Implementer",
     prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. Produce your full output immediately.\n\nYou are a coding agent. You must implement the following feature in a Next.js 16 app (App Router, React 19, TypeScript, Tailwind CSS v4). Output complete, working, production-ready code for every file needed. Include all imports, types, and exports. Do not leave placeholders or TODOs.\n\nFeature to implement: ",
+      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a coding agent. Implement the following feature. Study the project context provided below to understand the existing codebase, tech stack, and patterns, then output complete, working, production-ready code for every file needed. Match the existing code style. Include all imports, types, and exports. Do not leave placeholders or TODOs.\n\nFeature to implement: ",
   },
   {
     name: "Reviewer",
     prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. Produce your full output immediately.\n\nYou are a code review agent. Analyze the following feature request for a Next.js 16 app (App Router, React 19, TypeScript, Tailwind CSS v4) and provide: 1) potential edge cases, 2) security considerations, 3) performance concerns, 4) a complete reference implementation with code. Output detailed analysis and working code.\n\nFeature to review: ",
+      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a code review agent. Analyze the following feature request. Study the project context provided below to understand the existing codebase, then provide: 1) potential edge cases, 2) security considerations, 3) performance concerns, 4) a complete reference implementation with code that fits the existing project.\n\nFeature to review: ",
   },
 ];
 
@@ -41,11 +53,15 @@ export async function executeAgent(
   taskId: string,
   agent: Agent,
   taskDescription: string,
-  project: Project
+  contextBlock: string
 ): Promise<void> {
   const role = AGENT_ROLES.find((r) => r.name === agent.name);
-  const projectContext = `\n\nProject: "${project.name}" located at ${project.dir}\n`;
-  const prompt = (role?.prefix || "") + taskDescription + projectContext;
+  const prompt =
+    (role?.prefix || "") +
+    taskDescription +
+    "\n\n" +
+    contextBlock +
+    OUTPUT_INSTRUCTIONS;
 
   updateAgent(taskId, agent.id, { status: "running" });
   appendAgentLog(taskId, agent.id, `Agent "${agent.name}" starting...`);
@@ -103,7 +119,15 @@ export async function runAllAgents(
   taskDescription: string,
   project: Project
 ): Promise<void> {
+  // Load project context once for all agents
+  const contextBlock = await getProjectContext(project.dir);
+  console.log(
+    `[Context] Loaded ${(contextBlock.length / 1024).toFixed(1)}KB of project context for "${project.name}"`
+  );
+
   await Promise.all(
-    agents.map((agent) => executeAgent(taskId, agent, taskDescription, project))
+    agents.map((agent) =>
+      executeAgent(taskId, agent, taskDescription, contextBlock)
+    )
   );
 }
