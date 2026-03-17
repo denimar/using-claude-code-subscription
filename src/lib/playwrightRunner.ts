@@ -188,13 +188,7 @@ export async function runPlaywrightAgent(
     // Wait for response to start appearing
     callbacks.onLog("Waiting for Claude's response...");
 
-    await page.waitForSelector('[data-is-streaming]', {
-      timeout: 30_000,
-    }).catch(() => {
-      // Fallback: wait for any new message content
-    });
-
-    // Wait for streaming to finish
+    // Wait for streaming to finish using content stabilization
     await waitForResponseComplete(page, callbacks);
 
     // Extract the response text
@@ -234,43 +228,72 @@ async function waitForResponseComplete(
   callbacks: RunnerCallbacks
 ): Promise<void> {
   const startTime = Date.now();
+  let lastContentLength = 0;
+  let stableChecks = 0;
+  const STABLE_THRESHOLD = 4; // 4 consecutive checks with same content = done
+  const CHECK_INTERVAL = 3000; // check every 3 seconds
+
+  // Wait for initial content to appear
+  await page.waitForTimeout(5000);
 
   while (Date.now() - startTime < RESPONSE_TIMEOUT) {
-    const isStreaming = await page
+    const status = await page
       .evaluate(() => {
-        const el = document.querySelector("[data-is-streaming]");
-        if (el) {
-          return el.getAttribute("data-is-streaming") === "true";
+        // Check if still streaming via data attribute
+        const streamEl = document.querySelector("[data-is-streaming]");
+        if (
+          streamEl &&
+          streamEl.getAttribute("data-is-streaming") === "true"
+        ) {
+          return { streaming: true, contentLength: 0 };
         }
-        const stopBtn = document.querySelector(
-          'button[aria-label="Stop"], button[aria-label="Stop Response"]'
-        );
-        return !!stopBtn;
-      })
-      .catch(() => false);
 
-    if (!isStreaming) {
-      await page.waitForTimeout(2000);
-      const stillStreaming = await page
-        .evaluate(() => {
-          const el = document.querySelector("[data-is-streaming]");
-          if (el) {
-            return el.getAttribute("data-is-streaming") === "true";
+        // Check for stop/cancel buttons (broad matching)
+        const allButtons = document.querySelectorAll("button");
+        for (const btn of allButtons) {
+          const label = (
+            btn.getAttribute("aria-label") ||
+            btn.textContent ||
+            ""
+          ).toLowerCase();
+          // Only match visible buttons
+          if (
+            (label.includes("stop") || label.includes("cancel response")) &&
+            btn.offsetParent !== null
+          ) {
+            return { streaming: true, contentLength: 0 };
           }
-          const stopBtn = document.querySelector(
-            'button[aria-label="Stop"], button[aria-label="Stop Response"]'
-          );
-          return !!stopBtn;
-        })
-        .catch(() => false);
+        }
 
-      if (!stillStreaming) {
+        // Measure total content length on page for stabilization
+        const bodyText = document.body.innerText || "";
+        return { streaming: false, contentLength: bodyText.length };
+      })
+      .catch(() => ({ streaming: false, contentLength: 0 }));
+
+    if (status.streaming) {
+      stableChecks = 0;
+      callbacks.onLog("Still streaming...");
+      await page.waitForTimeout(CHECK_INTERVAL);
+      continue;
+    }
+
+    // Content stabilization: if length hasn't changed, response is likely done
+    if (
+      status.contentLength > 0 &&
+      status.contentLength === lastContentLength
+    ) {
+      stableChecks++;
+      if (stableChecks >= STABLE_THRESHOLD) {
         callbacks.onLog("Response complete.");
         return;
       }
+    } else {
+      stableChecks = 0;
     }
 
-    await page.waitForTimeout(1000);
+    lastContentLength = status.contentLength;
+    await page.waitForTimeout(CHECK_INTERVAL);
   }
 
   callbacks.onLog("Response timed out — extracting partial response.");
@@ -295,12 +318,14 @@ async function extractResponse(page: Page): Promise<string> {
         const elem = child as Element;
         const tag = elem.tagName.toLowerCase();
 
+        // Skip script/style
+        if (tag === "script" || tag === "style") continue;
+
         // Code blocks (pre > code) — also handle wrapper divs around pre
         if (tag === "pre" || (elem.querySelector("pre") && !elem.querySelector("p"))) {
           const pre = tag === "pre" ? elem : elem.querySelector("pre")!;
           const code = pre.querySelector("code");
           const codeText = code?.textContent || pre.textContent || "";
-          // Try to detect language from class
           const langClass = code?.className?.match(/language-(\w+)/);
           const lang = langClass ? langClass[1] : "";
           parts.push(`\n\`\`\`${lang}\n${codeText}\n\`\`\`\n`);
@@ -313,7 +338,7 @@ async function extractResponse(page: Page): Promise<string> {
           continue;
         }
 
-        // Bold — recurse into children to preserve nested formatting
+        // Bold — recurse to preserve nested formatting
         if (tag === "strong" || tag === "b") {
           const inner = htmlToMarkdown(elem);
           parts.push(`**${inner}**`);
@@ -347,51 +372,87 @@ async function extractResponse(page: Page): Promise<string> {
       return parts.join("");
     }
 
-    // Collect all response parts (main message + any artifacts)
-    const responseParts: string[] = [];
-
-    // 1. Try to get the main chat message content
+    // ── Strategy 1: Find ALL assistant message blocks and convert them ──
+    // Try multiple selectors for message containers
     const messageSelectors = [
       '[data-testid="chat-message-content"]',
       ".prose",
       '[class*="message-content"]',
-      '[class*="response"]',
+      '[class*="MessageContent"]',
     ];
 
+    let messageElements: Element[] = [];
     for (const selector of messageSelectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) {
-        const last = elements[elements.length - 1];
-        responseParts.push(htmlToMarkdown(last));
+      const els = document.querySelectorAll(selector);
+      if (els.length > 0) {
+        messageElements = Array.from(els);
         break;
       }
     }
 
-    // 2. Also try to capture artifact/canvas content (Claude puts code in side panels)
-    const artifactSelectors = [
-      '[data-testid="artifact-content"]',
-      '[data-testid="code-content"]',
-      '[class*="artifact"] pre code',
-      '[class*="canvas"] pre code',
-      '[class*="code-block-container"] code',
-    ];
+    // Take the last half of message elements (skip user message, get assistant responses)
+    // In a new chat, first element(s) are the user message, rest are assistant
+    const assistantMessages = messageElements.length > 1
+      ? messageElements.slice(Math.ceil(messageElements.length / 2))
+      : messageElements;
 
-    for (const selector of artifactSelectors) {
-      const elements = document.querySelectorAll(selector);
-      for (const elem of elements) {
-        const text = elem.textContent || "";
-        if (text.length > 50) {
-          // Try to find a filename associated with this artifact
-          const parent = elem.closest('[class*="artifact"], [class*="canvas"], [class*="code-block"]');
-          const titleEl = parent?.querySelector('[class*="title"], [class*="filename"], [class*="name"]');
-          const title = titleEl?.textContent?.trim() || "";
+    const responseParts: string[] = [];
 
-          if (title && title.includes(".")) {
-            responseParts.push(`\n**\`${title}\`**\n\`\`\`\n${text}\n\`\`\`\n`);
-          } else {
-            responseParts.push(`\n\`\`\`\n${text}\n\`\`\`\n`);
+    for (const msgEl of assistantMessages) {
+      const md = htmlToMarkdown(msgEl);
+      if (md.trim().length > 0) {
+        responseParts.push(md);
+      }
+    }
+
+    // ── Strategy 2: Independently find ALL <pre> code blocks on the page ──
+    // These might be in artifacts, canvas, or other containers we missed
+    const allPreElements = document.querySelectorAll("pre");
+    const capturedCodeTexts = new Set<string>();
+
+    // Track which pre elements were already captured in strategy 1
+    for (const msgEl of assistantMessages) {
+      const pres = msgEl.querySelectorAll("pre");
+      for (const pre of pres) {
+        capturedCodeTexts.add((pre.textContent || "").trim());
+      }
+    }
+
+    for (const pre of allPreElements) {
+      const code = pre.querySelector("code");
+      const codeText = (code?.textContent || pre.textContent || "").trim();
+
+      // Skip if already captured or too short
+      if (capturedCodeTexts.has(codeText) || codeText.length < 50) continue;
+      capturedCodeTexts.add(codeText);
+
+      const langClass = code?.className?.match(/language-(\w+)/);
+      const lang = langClass ? langClass[1] : "";
+
+      // Try to find a file name/title associated with this code block
+      // Look in parent containers for title/filename elements
+      let fileName = "";
+      let container = pre.parentElement;
+      for (let i = 0; i < 5 && container; i++) {
+        // Check for title-like elements in this container
+        const titleEl = container.querySelector(
+          '[class*="title"], [class*="filename"], [class*="name"], [class*="header"] span, [class*="tab"] span'
+        );
+        if (titleEl) {
+          const titleText = titleEl.textContent?.trim() || "";
+          // Check if it looks like a file path
+          if (titleText.includes(".") && /^[\w./\-]+$/.test(titleText)) {
+            fileName = titleText;
+            break;
           }
         }
+        container = container.parentElement;
+      }
+
+      if (fileName) {
+        responseParts.push(`\n**\`${fileName}\`**\n\`\`\`${lang}\n${codeText}\n\`\`\`\n`);
+      } else {
+        responseParts.push(`\n\`\`\`${lang}\n${codeText}\n\`\`\`\n`);
       }
     }
 
@@ -399,7 +460,7 @@ async function extractResponse(page: Page): Promise<string> {
       return responseParts.join("\n");
     }
 
-    // Fallback: get longest text block
+    // ── Fallback: get longest text block on the page ──
     const allDivs = document.querySelectorAll("div");
     let longest = "";
     for (const div of allDivs) {
@@ -411,5 +472,6 @@ async function extractResponse(page: Page): Promise<string> {
     return longest;
   });
 
+  console.log(`[extractResponse] Extracted ${response.length} chars`);
   return response.trim();
 }
