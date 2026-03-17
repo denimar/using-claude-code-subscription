@@ -22,19 +22,29 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
   const files: ParsedFile[] = [];
   const seen = new Set<string>();
 
-  // Strategy 1: File path header (various formats) followed by code fence
-  // Matches: **`path`**, `path`, ### path, // File: path — then ```lang\n...```
-  const headerPattern =
-    /(?:\*{0,2}`([^`\n]+\.\w+)`\*{0,2}|#{1,4}\s+`?([^\n`]+\.\w+)`?|\/\/\s*(?:File:\s*)([^\n]+\.\w+))\s*\n\s*```[\w]*\n([\s\S]*?)```/g;
+  function addFile(filePath: string, content: string) {
+    const clean = filePath.trim().replace(/^[`*#\s]+|[`*\s]+$/g, "");
+    if (clean && content && isValidFilePath(clean) && !seen.has(clean)) {
+      seen.add(clean);
+      files.push({ filePath: clean, content: content.trimEnd() + "\n" });
+    }
+  }
 
-  let match;
-  while ((match = headerPattern.exec(responseText)) !== null) {
-    const filePath = (match[1] || match[2] || match[3] || "").trim();
-    const content = match[4];
+  // Strategy 1: Any line containing a file-path-like string followed by a code fence
+  // This is intentionally broad to catch: **`path`**, **path**, `path`, ### path, etc.
+  const broadPattern =
+    /^[#*`\s]*([a-zA-Z0-9_./\-]+\/[a-zA-Z0-9_.\-]+\.\w+)[`*\s]*$/gm;
 
-    if (filePath && content && isValidFilePath(filePath) && !seen.has(filePath)) {
-      seen.add(filePath);
-      files.push({ filePath, content: content.trimEnd() + "\n" });
+  // Find all potential file path lines and check if a code fence follows
+  let pathMatch;
+  while ((pathMatch = broadPattern.exec(responseText)) !== null) {
+    const filePath = pathMatch[1];
+    const afterMatch = responseText.slice(pathMatch.index + pathMatch[0].length);
+
+    // Look for a code fence within the next few lines (allowing blank lines)
+    const fenceMatch = afterMatch.match(/^\s*\n\s*```[\w]*\n([\s\S]*?)```/);
+    if (fenceMatch) {
+      addFile(filePath, fenceMatch[1]);
     }
   }
 
@@ -44,14 +54,9 @@ export function parseFilesFromResponse(responseText: string): ParsedFile[] {
     const commentPattern =
       /```[\w]*\n\/\/\s*([\w/.:-]+\.\w+)\n([\s\S]*?)```/g;
 
+    let match;
     while ((match = commentPattern.exec(responseText)) !== null) {
-      const filePath = match[1].trim();
-      const content = match[2];
-
-      if (filePath && content && isValidFilePath(filePath) && !seen.has(filePath)) {
-        seen.add(filePath);
-        files.push({ filePath, content: content.trimEnd() + "\n" });
-      }
+      addFile(match[1], match[2]);
     }
   }
 
