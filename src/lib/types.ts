@@ -27,6 +27,11 @@ export interface AgentLog {
   message: string;
 }
 
+export interface AgentScreenshots {
+  before: string;
+  after: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -34,7 +39,7 @@ export interface Agent {
   logs: AgentLog[];
   output: string | null;
   codeBlocks: string[];
-  screenshots: string[];
+  screenshots: AgentScreenshots | null;
   error: string | null;
 }
 

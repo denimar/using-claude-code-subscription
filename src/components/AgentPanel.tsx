@@ -87,23 +87,34 @@ export function AgentPanel({ agent }: AgentPanelProps) {
           </div>
         )}
 
-        {/* Screenshots */}
-        {agent.screenshots && agent.screenshots.length > 0 && (
+        {/* Before / After Screenshots */}
+        {agent.screenshots && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
               <Camera className="size-3" />
-              Screenshots
+              Visual Change
             </p>
-            <div className="space-y-2">
-              {agent.screenshots.map((filename, i) => (
-                <div key={i} className="rounded-md overflow-hidden border border-border">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1 text-center font-medium">Before</p>
+                <div className="rounded-md overflow-hidden border border-border">
                   <img
-                    src={`/api/screenshots/${filename}`}
-                    alt={`Screenshot ${i + 1}`}
+                    src={`/api/screenshots/${agent.screenshots.before}`}
+                    alt="Before change"
                     className="w-full h-auto"
                   />
                 </div>
-              ))}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1 text-center font-medium">After</p>
+                <div className="rounded-md overflow-hidden border border-green-500/50">
+                  <img
+                    src={`/api/screenshots/${agent.screenshots.after}`}
+                    alt="After change"
+                    className="w-full h-auto"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}

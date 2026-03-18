@@ -1,4 +1,4 @@
-import { Agent, Project } from "./types";
+import { Agent, AgentScreenshots, Project } from "./types";
 import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
 import { getProjectContext } from "./projectContext";
@@ -71,7 +71,7 @@ export function createAgents(taskId: string, count: number = 1): Agent[] {
       logs: [],
       output: null,
       codeBlocks: [],
-      screenshots: [],
+      screenshots: null,
       error: null,
     });
   }
@@ -105,7 +105,6 @@ export async function executeAgent(
       },
       onComplete: (resp) => {
         updateAgent(taskId, agent.id, {
-          status: "completed",
           output: resp,
           codeBlocks: extractCodeBlocks(resp),
         });
@@ -118,9 +117,9 @@ export async function executeAgent(
       },
     });
 
-    // Ensure final state is set
+    // Update output and code blocks but keep status as "running"
+    // until file writing and screenshots are done
     updateAgent(taskId, agent.id, {
-      status: "completed",
       output: response,
       codeBlocks,
     });
@@ -129,6 +128,7 @@ export async function executeAgent(
     console.log(`[${agent.name}] Response preview (first 500 chars):\n${response.slice(0, 500)}`);
     appendAgentLog(taskId, agent.id, "Parsing files from response...");
     const parsedFiles = parseFilesFromResponse(response);
+    let agentScreenshots: AgentScreenshots | null = null;
 
     if (parsedFiles.length > 0) {
       appendAgentLog(
@@ -136,6 +136,18 @@ export async function executeAgent(
         agent.id,
         `Found ${parsedFiles.length} file(s): ${parsedFiles.map((f) => f.filePath).join(", ")}`
       );
+
+      // Take BEFORE screenshot (before writing files)
+      let beforeFile: string | null = null;
+      if (project.devUrl) {
+        appendAgentLog(taskId, agent.id, "Taking BEFORE screenshot...");
+        const beforeName = `${taskId}-${agent.id}-before.png`;
+        beforeFile = await takeScreenshot(project.devUrl, beforeName);
+        if (beforeFile) {
+          appendAgentLog(taskId, agent.id, "Before screenshot captured.");
+        }
+      }
+
       const result = await writeFilesToProject(project.dir, parsedFiles);
 
       for (const file of result.written) {
@@ -149,18 +161,19 @@ export async function executeAgent(
         agent.id,
         `Applied ${result.written.length} file(s) to ${project.dir}`
       );
-      if (project.devUrl && result.written.length > 0) {
-        appendAgentLog(taskId, agent.id, "Taking screenshot of the change...");
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        const screenshotFile = `${taskId}-${agent.id}-${Date.now()}.png`;
-        const screenshot = await takeScreenshot(project.devUrl, screenshotFile);
-        if (screenshot) {
-          updateAgent(taskId, agent.id, {
-            screenshots: [screenshot],
-          });
-          appendAgentLog(taskId, agent.id, "Screenshot captured.");
+
+      // Take AFTER screenshot (after writing files + hot-reload)
+      if (project.devUrl && result.written.length > 0 && beforeFile) {
+        appendAgentLog(taskId, agent.id, "Waiting for hot-reload...");
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        appendAgentLog(taskId, agent.id, "Taking AFTER screenshot...");
+        const afterName = `${taskId}-${agent.id}-after.png`;
+        const afterFile = await takeScreenshot(project.devUrl, afterName);
+        if (afterFile) {
+          agentScreenshots = { before: beforeFile, after: afterFile };
+          appendAgentLog(taskId, agent.id, "After screenshot captured.");
         } else {
-          appendAgentLog(taskId, agent.id, "Screenshot failed — dev server may not be running.");
+          appendAgentLog(taskId, agent.id, "After screenshot failed.");
         }
       }
     } else {
@@ -168,6 +181,13 @@ export async function executeAgent(
     }
 
     appendAgentLog(taskId, agent.id, "Agent completed successfully.");
+
+    // Set status to "completed" AFTER screenshots are done
+    // so the frontend keeps polling until everything is ready
+    updateAgent(taskId, agent.id, {
+      status: "completed",
+      screenshots: agentScreenshots,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     updateAgent(taskId, agent.id, {
