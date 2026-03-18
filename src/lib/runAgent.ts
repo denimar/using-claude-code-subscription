@@ -3,7 +3,7 @@ import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
 import { getProjectContext } from "./projectContext";
 import { parseFilesFromResponse, writeFilesToProject } from "./fileWriter";
-import { takeScreenshot } from "./screenshotRunner";
+import { takeScreenshot, takeScreenshotAfterChange } from "./screenshotRunner";
 
 const OUTPUT_INSTRUCTIONS = `
 
@@ -165,10 +165,15 @@ export async function executeAgent(
       // Take AFTER screenshot (after writing files + hot-reload)
       if (project.devUrl && result.written.length > 0 && beforeFile) {
         appendAgentLog(taskId, agent.id, "Waiting for hot-reload...");
-        await new Promise((resolve) => setTimeout(resolve, 6000));
-        appendAgentLog(taskId, agent.id, "Taking AFTER screenshot...");
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        appendAgentLog(taskId, agent.id, "Taking AFTER screenshot (will retry if unchanged)...");
         const afterName = `${taskId}-${agent.id}-after.png`;
-        const afterFile = await takeScreenshot(project.devUrl, afterName);
+        const afterFile = await takeScreenshotAfterChange(
+          project.devUrl,
+          afterName,
+          beforeFile,
+          (message) => appendAgentLog(taskId, agent.id, message)
+        );
         if (afterFile) {
           agentScreenshots = { before: beforeFile, after: afterFile };
           appendAgentLog(taskId, agent.id, "After screenshot captured.");
