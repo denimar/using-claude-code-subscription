@@ -38,7 +38,7 @@ export function TaskInput({ onSubmit, isLoading }: TaskInputProps) {
         ) : (
           <>
             <Play className="size-4" />
-            Run Agents
+            Run
           </>
         )}
       </Button>

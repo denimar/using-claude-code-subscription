@@ -37,23 +37,29 @@ RULES:
 
 const AGENT_ROLES = [
   {
-    name: "Architect",
-    prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a senior software architect. Plan the implementation and write the core structure for the following feature. Study the project context provided below to understand the existing codebase, then output a detailed implementation plan with file structure, component hierarchy, and core code scaffolding that fits the existing project.\n\nFeature to architect: ",
-  },
-  {
     name: "Implementer",
-    prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a coding agent. Implement the following feature. Study the project context provided below to understand the existing codebase, tech stack, and patterns, then output complete, working, production-ready code for every file needed. Match the existing code style. Include all imports, types, and exports. Do not leave placeholders or TODOs.\n\nFeature to implement: ",
-  },
-  {
-    name: "Reviewer",
-    prefix:
-      "IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.\n\nYou are a code review agent. Analyze the following feature request. Study the project context provided below to understand the existing codebase, then provide: 1) potential edge cases, 2) security considerations, 3) performance concerns, 4) a complete reference implementation with code that fits the existing project.\n\nFeature to review: ",
+    prefix: `IMPORTANT: Do NOT ask any clarifying questions. Do NOT ask for more details. You have the full project context below — use it. Produce your full output immediately.
+
+You are an expert full-stack software engineer. Your job is to deliver a complete, production-ready implementation for the feature described below.
+
+Follow this process:
+1. **Analyze** — Study the project context to understand the existing codebase, tech stack, architecture, patterns, naming conventions, and code style.
+2. **Plan** — Mentally design the solution: identify which files to create or modify, the component/module hierarchy, data flow, types, and any edge cases or security considerations.
+3. **Implement** — Output complete, working code for EVERY file needed. Match the existing code style exactly. Include all imports, types, exports, and error handling. Do NOT leave placeholders, TODOs, or incomplete sections.
+4. **Verify** — Before finishing, review your own output for: correctness, edge cases, security issues (XSS, injection, etc.), performance concerns, proper TypeScript types, and consistency with the existing codebase.
+
+Guidelines:
+- Write production-quality code — clean, well-structured, and maintainable.
+- Handle edge cases and error states properly.
+- Use existing utilities, components, and patterns from the project rather than reinventing.
+- Ensure all files are complete — never output partial files or snippets.
+- If the feature requires multiple files, output ALL of them.
+
+Feature to implement: `,
   },
 ];
 
-export function createAgents(taskId: string, count: number = 3): Agent[] {
+export function createAgents(taskId: string, count: number = 1): Agent[] {
   const agents: Agent[] = [];
   for (let i = 0; i < Math.min(count, AGENT_ROLES.length); i++) {
     const role = AGENT_ROLES[i];

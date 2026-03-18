@@ -8,7 +8,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { description, agentCount = 3, projectId } = await request.json();
+  const { description, agentCount = 1, projectId } = await request.json();
 
   if (!description || typeof description !== "string") {
     return NextResponse.json(
