@@ -28,12 +28,12 @@ export function AppToolbar() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-yellow-400 bg-yellow-400 backdrop-blur supports-[backdrop-filter]:bg-yellow-400/90">
       <div className="px-4 sm:px-6">
         <div className="flex h-14 items-center justify-between gap-4">
           <div className="flex items-center gap-2 shrink-0">
-            <Bot className="size-5 text-primary" />
-            <span className="font-semibold text-sm tracking-tight">
+            <Bot className="size-5 text-yellow-900" />
+            <span className="font-semibold text-sm tracking-tight text-yellow-900">
               Multi-Agent Runner
             </span>
           </div>
@@ -47,7 +47,7 @@ export function AppToolbar() {
 function SessionBadge({ status }: { status: SessionStatus }) {
   if (status === "checking") {
     return (
-      <Badge variant="secondary" className="gap-1.5 text-xs">
+      <Badge variant="secondary" className="gap-1.5 text-xs bg-yellow-200 text-yellow-800 border-yellow-300">
         <Loader2 className="size-3 animate-spin" />
         Checking session…
       </Badge>
@@ -55,14 +55,14 @@ function SessionBadge({ status }: { status: SessionStatus }) {
   }
   if (status === "connected") {
     return (
-      <Badge variant="secondary" className="gap-1.5 text-xs text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">
+      <Badge variant="secondary" className="gap-1.5 text-xs text-emerald-700 bg-emerald-100 border-emerald-300">
         <Wifi className="size-3" />
         Session active
       </Badge>
     );
   }
   return (
-    <Badge variant="secondary" className="gap-1.5 text-xs text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
+    <Badge variant="secondary" className="gap-1.5 text-xs text-amber-700 bg-amber-100 border-amber-300">
       <WifiOff className="size-3" />
       No session — open browser to log in
     </Badge>

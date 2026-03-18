@@ -1,7 +1,13 @@
 import { Task, Agent, AgentLog } from "./types";
 
-// In-memory store for tasks
-const tasks = new Map<string, Task>();
+// Persist across HMR restarts using globalThis (standard Next.js pattern)
+const globalForStore = globalThis as unknown as {
+  __runnerTasks: Map<string, Task>;
+};
+if (!globalForStore.__runnerTasks) {
+  globalForStore.__runnerTasks = new Map<string, Task>();
+}
+const tasks = globalForStore.__runnerTasks;
 
 export function createTask(description: string, projectId: string): Task {
   const id = crypto.randomUUID();

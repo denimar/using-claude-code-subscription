@@ -1,0 +1,3 @@
+[     312ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/settings?_rsc=1r34m:0
+[     313ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/agents?_rsc=1r34m:0
+[     316ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/tasks?_rsc=1r34m:0

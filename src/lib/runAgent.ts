@@ -167,7 +167,7 @@ export async function executeAgent(
       // Take AFTER screenshot with retry until page changes
       if (project.devUrl && result.written.length > 0 && beforeFile) {
         appendAgentLog(taskId, agent.id, "Waiting for dev server recompilation...");
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
         const afterName = `${taskId}-${agent.id}-after.png`;
         const afterFile = await takeAfterScreenshot(
           project.devUrl,
