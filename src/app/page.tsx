@@ -1,160 +1,105 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Task, PROJECTS } from "@/lib/types";
-import { TaskInput } from "@/components/TaskInput";
+import { Toolbar } from "@/components/Toolbar";
 import { AgentPanel } from "@/components/AgentPanel";
-import { ProjectSelector } from "@/components/ProjectSelector";
-import { Badge } from "@/components/ui/badge";
-import { AlertTriangle } from "lucide-react";
+import { PROJECTS, Task } from "@/lib/types";
 
 export default function Home() {
+  const [selectedProject, setSelectedProject] = useState<string>(
+    PROJECTS[0]?.id ?? ""
+  );
+  const [isLoading, setIsLoading] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [cookiesReady, setCookiesReady] = useState<boolean | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState(PROJECTS[0].id);
 
-  // Check if cookies exist on mount
-  useEffect(() => {
-    fetch("/api/cookies")
-      .then((r) => r.json())
-      .then((data) => setCookiesReady(data.exists))
-      .catch(() => setCookiesReady(false));
-  }, []);
-
-  // Poll active task for updates
+  // Poll the active task while agents are running
   useEffect(() => {
     if (!activeTaskId) return;
-
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/tasks/${activeTaskId}`);
         if (!res.ok) return;
         const task: Task = await res.json();
-
         setTasks((prev) =>
           prev.map((t) => (t.id === task.id ? task : t))
         );
-
-        // Stop polling if all agents are done
         const allDone = task.agents.every(
           (a) => a.status === "completed" || a.status === "error"
         );
         if (allDone) {
+          setIsLoading(false);
           setActiveTaskId(null);
-          setIsSubmitting(false);
+          clearInterval(interval);
         }
       } catch {
-        // ignore polling errors
+        // silently ignore poll errors
       }
     }, 2000);
-
     return () => clearInterval(interval);
   }, [activeTaskId]);
 
-  const handleSubmit = useCallback(async (description: string) => {
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, agentCount: 3, projectId: selectedProjectId }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || "Failed to create task");
-        setIsSubmitting(false);
-        return;
+  const handleSubmit = useCallback(
+    async (description: string) => {
+      if (!selectedProject || isLoading) return;
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description, projectId: selectedProject }),
+        });
+        if (!res.ok) throw new Error("Failed to create task");
+        const task: Task = await res.json();
+        setTasks((prev) => [task, ...prev]);
+        setActiveTaskId(task.id);
+      } catch (err) {
+        console.error(err);
+        setIsLoading(false);
       }
-
-      const task: Task = await res.json();
-      setTasks((prev) => [task, ...prev]);
-      setActiveTaskId(task.id);
-    } catch {
-      alert("Failed to create task");
-      setIsSubmitting(false);
-    }
-  }, [selectedProjectId]);
+    },
+    [selectedProject, isLoading]
+  );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Multi-Agent Coding Runner
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Launch parallel Claude agents to tackle coding tasks
-          </p>
-        </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <Toolbar
+        selectedProject={selectedProject}
+        onProjectChange={setSelectedProject}
+        onSubmit={handleSubmit}
+        isLoading={isLoading}
+      />
 
-        {/* Session status */}
-        {cookiesReady === false && (
-          <div className="mb-6 flex items-start gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
-            <AlertTriangle className="size-5 text-yellow-500 mt-0.5 shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium text-yellow-600">
-                No browser session found
-              </p>
-              <p className="text-muted-foreground mt-1">
-                A browser will open on first run for you to log in to claude.ai.
-                Your session will be saved automatically for future runs.
-              </p>
-            </div>
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
+        {tasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center text-muted-foreground">
+            <p className="text-lg font-medium">No tasks yet</p>
+            <p className="text-sm mt-1">
+              Select a project and describe what you want to build above.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {tasks.map((task) => (
+              <div key={task.id} className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold truncate max-w-xl">
+                    {task.description}
+                  </h2>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {new Date(task.createdAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {task.agents.map((agent) => (
+                    <AgentPanel key={agent.id} agent={agent} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
-
-        {cookiesReady === true && (
-          <div className="mb-6">
-            <Badge variant="outline" className="text-green-600 border-green-500/30">
-              Browser session ready
-            </Badge>
-          </div>
-        )}
-
-        {/* Project selector */}
-        <div className="mb-4">
-          <ProjectSelector
-            value={selectedProjectId}
-            onChange={setSelectedProjectId}
-            disabled={isSubmitting}
-          />
-        </div>
-
-        {/* Task input */}
-        <div className="mb-8">
-          <TaskInput onSubmit={handleSubmit} isLoading={isSubmitting} />
-        </div>
-
-        {/* Tasks */}
-        {tasks.map((task) => (
-          <div key={task.id} className="mb-8">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold">Task: {task.description}</h2>
-              <p className="text-xs text-muted-foreground">
-                {new Date(task.createdAt).toLocaleString()} &middot;{" "}
-                {task.agents.length} agent(s) &middot;{" "}
-                {PROJECTS.find((p) => p.id === task.projectId)?.name || task.projectId}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {task.agents.map((agent) => (
-                <AgentPanel key={agent.id} agent={agent} />
-              ))}
-            </div>
-          </div>
-        ))}
-
-        {tasks.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground">
-            <p>No tasks yet. Describe a feature and launch agents.</p>
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }
