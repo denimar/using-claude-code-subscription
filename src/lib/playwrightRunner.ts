@@ -28,6 +28,15 @@ let sharedContext: BrowserContext | null = null;
 let contextInitPromise: Promise<BrowserContext> | null = null;
 
 async function getOrCreateContext(): Promise<BrowserContext> {
+  if (sharedContext) {
+    // Verify the context is still alive
+    try {
+      await sharedContext.pages();
+    } catch {
+      console.log("[Session] Browser context disconnected. Recreating...");
+      sharedContext = null;
+    }
+  }
   if (sharedContext) return sharedContext;
   if (contextInitPromise) return contextInitPromise;
 
@@ -375,10 +384,12 @@ async function extractResponse(page: Page): Promise<string> {
     // ── Strategy 1: Find ALL assistant message blocks and convert them ──
     // Try multiple selectors for message containers
     const messageSelectors = [
+      '[class*="claude-response"]',
       '[data-testid="chat-message-content"]',
       ".prose",
       '[class*="message-content"]',
       '[class*="MessageContent"]',
+      '[class*="standard-markdown"]',
     ];
 
     let messageElements: Element[] = [];
@@ -390,11 +401,10 @@ async function extractResponse(page: Page): Promise<string> {
       }
     }
 
-    // Take the last half of message elements (skip user message, get assistant responses)
-    // In a new chat, first element(s) are the user message, rest are assistant
-    const assistantMessages = messageElements.length > 1
-      ? messageElements.slice(Math.ceil(messageElements.length / 2))
-      : messageElements;
+    // Filter to only assistant responses by excluding user message containers
+    // Claude.ai uses "claude-response" class only on assistant messages
+    // For other selectors, take the last element(s) as they're most likely the response
+    const assistantMessages = messageElements;
 
     const responseParts: string[] = [];
 
@@ -430,23 +440,39 @@ async function extractResponse(page: Page): Promise<string> {
       const lang = langClass ? langClass[1] : "";
 
       // Try to find a file name/title associated with this code block
-      // Look in parent containers for title/filename elements
+      // Look in parent containers and siblings for filename references
       let fileName = "";
+
+      // Method 1: Look in parent containers for title/filename elements
       let container = pre.parentElement;
-      for (let i = 0; i < 5 && container; i++) {
-        // Check for title-like elements in this container
-        const titleEl = container.querySelector(
-          '[class*="title"], [class*="filename"], [class*="name"], [class*="header"] span, [class*="tab"] span'
+      for (let i = 0; i < 6 && container && !fileName; i++) {
+        const titleEls = container.querySelectorAll(
+          '[class*="title"], [class*="filename"], [class*="name"], [class*="header"] span, [class*="tab"] span, button span, [class*="label"]'
         );
-        if (titleEl) {
+        for (const titleEl of titleEls) {
           const titleText = titleEl.textContent?.trim() || "";
-          // Check if it looks like a file path
-          if (titleText.includes(".") && /^[\w./\-]+$/.test(titleText)) {
+          if (titleText.includes(".") && /^[\w./\-]+$/.test(titleText) && titleText.includes("/")) {
             fileName = titleText;
             break;
           }
         }
         container = container.parentElement;
+      }
+
+      // Method 2: Check the previous sibling elements for file path text
+      if (!fileName) {
+        let sibling = pre.parentElement;
+        while (sibling && !fileName) {
+          const prev = sibling.previousElementSibling;
+          if (prev) {
+            const text = prev.textContent?.trim() || "";
+            const pathMatch = text.match(/([\w./\-]+\/[\w.\-]+\.\w+)/);
+            if (pathMatch) {
+              fileName = pathMatch[1];
+            }
+          }
+          sibling = sibling.parentElement;
+        }
       }
 
       if (fileName) {

@@ -145,6 +145,8 @@ export async function executeAgent(
         beforeFile = await takeScreenshot(project.devUrl, beforeName);
         if (beforeFile) {
           appendAgentLog(taskId, agent.id, "Before screenshot captured.");
+        } else {
+          appendAgentLog(taskId, agent.id, `Before screenshot failed (${project.devUrl} unreachable?)`);
         }
       }
 

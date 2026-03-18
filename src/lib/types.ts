@@ -10,7 +10,7 @@ export const PROJECTS: Project[] = [
     id: "using-claude-code-subscription",
     name: "using-claude-code-subscription",
     dir: "/home/denimar/projects/personal/using-claude-code-subscription",
-    devUrl: "http://localhost:3000",
+    devUrl: "http://localhost:3099",
   },
   {
     id: "encore-web",
