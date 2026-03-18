@@ -43,3 +43,6 @@ next-env.d.ts
 # claude persistent browser session (SENSITIVE - never commit)
 .claude-session/
 claude-cookies.json
+
+# screenshots captured by agents
+/screenshots/

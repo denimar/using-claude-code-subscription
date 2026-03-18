@@ -4,7 +4,7 @@ import { Agent } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CodeViewer } from "./CodeViewer";
-import { Bot, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Bot, CheckCircle, XCircle, Loader2, Camera } from "lucide-react";
 
 interface AgentPanelProps {
   agent: Agent;
@@ -83,6 +83,27 @@ export function AgentPanel({ agent }: AgentPanelProps) {
             <div className="bg-muted rounded-md p-2 max-h-32 overflow-y-auto text-xs">
               {agent.output.slice(0, 500)}
               {agent.output.length > 500 && "..."}
+            </div>
+          </div>
+        )}
+
+        {/* Screenshots */}
+        {agent.screenshots && agent.screenshots.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+              <Camera className="size-3" />
+              Screenshots
+            </p>
+            <div className="space-y-2">
+              {agent.screenshots.map((filename, i) => (
+                <div key={i} className="rounded-md overflow-hidden border border-border">
+                  <img
+                    src={`/api/screenshots/${filename}`}
+                    alt={`Screenshot ${i + 1}`}
+                    className="w-full h-auto"
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}

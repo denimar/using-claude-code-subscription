@@ -3,6 +3,7 @@ import { appendAgentLog, updateAgent } from "./store";
 import { runPlaywrightAgent } from "./playwrightRunner";
 import { getProjectContext } from "./projectContext";
 import { parseFilesFromResponse, writeFilesToProject } from "./fileWriter";
+import { takeScreenshot } from "./screenshotRunner";
 
 const OUTPUT_INSTRUCTIONS = `
 
@@ -70,6 +71,7 @@ export function createAgents(taskId: string, count: number = 1): Agent[] {
       logs: [],
       output: null,
       codeBlocks: [],
+      screenshots: [],
       error: null,
     });
   }
@@ -147,6 +149,20 @@ export async function executeAgent(
         agent.id,
         `Applied ${result.written.length} file(s) to ${project.dir}`
       );
+      if (project.devUrl && result.written.length > 0) {
+        appendAgentLog(taskId, agent.id, "Taking screenshot of the change...");
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const screenshotFile = `${taskId}-${agent.id}-${Date.now()}.png`;
+        const screenshot = await takeScreenshot(project.devUrl, screenshotFile);
+        if (screenshot) {
+          updateAgent(taskId, agent.id, {
+            screenshots: [screenshot],
+          });
+          appendAgentLog(taskId, agent.id, "Screenshot captured.");
+        } else {
+          appendAgentLog(taskId, agent.id, "Screenshot failed — dev server may not be running.");
+        }
+      }
     } else {
       appendAgentLog(taskId, agent.id, "No files with path headers found to apply.");
     }
