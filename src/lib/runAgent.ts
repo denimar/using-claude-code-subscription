@@ -165,7 +165,7 @@ export async function executeAgent(
       // Take AFTER screenshot (after writing files + hot-reload)
       if (project.devUrl && result.written.length > 0 && beforeFile) {
         appendAgentLog(taskId, agent.id, "Waiting for hot-reload...");
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await new Promise((resolve) => setTimeout(resolve, 6000));
         appendAgentLog(taskId, agent.id, "Taking AFTER screenshot...");
         const afterName = `${taskId}-${agent.id}-after.png`;
         const afterFile = await takeScreenshot(project.devUrl, afterName);
