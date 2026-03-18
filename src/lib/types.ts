@@ -7,9 +7,9 @@ export interface Project {
 
 export const PROJECTS: Project[] = [
   {
-    id: "using-claude-code-subscription",
-    name: "using-claude-code-subscription",
-    dir: "/home/denimar/projects/personal/using-claude-code-subscription",
+    id: "stacktalk",
+    name: "stacktalk",
+    dir: "/home/denimar/projects/personal/stacktalk",
     devUrl: "http://localhost:3000",
   },
   {

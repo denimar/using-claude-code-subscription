@@ -21,9 +21,9 @@ This is a **Next.js 16** app using the **App Router** with React 19 and TypeScri
 - **TypeScript:** strict mode enabled, target ES2017
 - **UI Components:** shadcn/ui (base-nova style, neutral base color, Lucide icons). Add components via `npx shadcn@latest add <component>`. Components go to `src/components/ui/`, utilities in `src/lib/utils.ts`.
 
-## Multi-Agent Runner
+## Stacktalk
 
-This app is a **multi-agent coding runner** that launches parallel Claude agents via Playwright browser automation against a claude.ai subscription session.
+Stacktalk is a **conversational webapp builder** where AI agents turn your ideas into fully functional applications — through natural dialogue, structured task management, and real-time collaboration. It launches parallel Claude agents via Playwright browser automation against a claude.ai subscription session.
 
 ### Key modules
 - `src/lib/types.ts` — Shared types (Task, Agent, AgentLog)
@@ -43,3 +43,10 @@ This app is a **multi-agent coding runner** that launches parallel Claude agents
 - **Subsequent runs:** browser launches headless using saved session, no login needed
 - **Session reset:** delete the `.claude-session/` directory and restart
 - Install Playwright browsers: `npx playwright install chromium`
+
+## VERY IMPORTANT
+
+- **EVERY TIME** you find something important to add in this CLAUDE.md file, add it
+- **EVERY TIME** you make changes on the UX/UI, use the playwright to double check the change
+- **WHEN** you use Playwright, always close it after you executed a task
+- **EVERY TIME** you implement frontend/UI code, you MUST use the `frontend-design` skill (`.claude/skills/frontend-design`)

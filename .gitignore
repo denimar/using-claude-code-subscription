@@ -46,3 +46,5 @@ claude-cookies.json
 
 # screenshots captured by agents
 /screenshots/
+
+/src/generated/prisma

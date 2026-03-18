@@ -21,7 +21,7 @@ export function Sidebar() {
     <aside className="w-64 shrink-0 flex flex-col h-screen bg-neutral-900 border-r border-neutral-800">
       <div className="px-4 py-4 border-b border-neutral-800">
         <span className="text-sm font-semibold text-neutral-100 tracking-tight">
-          Multi-Agent Runner
+          Stacktalk
         </span>
       </div>
 

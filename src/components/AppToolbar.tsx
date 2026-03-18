@@ -34,7 +34,7 @@ export function AppToolbar() {
           <div className="flex items-center gap-2 shrink-0">
             <Bot className="size-5 text-yellow-900" />
             <span className="font-semibold text-sm tracking-tight text-yellow-900">
-              Multi-Agent Runner
+              Stacktalk
             </span>
           </div>
           <SessionBadge status={sessionStatus} />

@@ -1,6 +1,8 @@
-# Using Claude Code Subscription
+# Stacktalk
 
-A web application built with Next.js 16, React 19, and TypeScript.
+A conversational webapp builder where AI agents turn your ideas into fully functional applications — through natural dialogue, structured task management, and real-time collaboration.
+
+Built with Next.js 16, React 19, and TypeScript.
 
 ## Tech Stack
 
