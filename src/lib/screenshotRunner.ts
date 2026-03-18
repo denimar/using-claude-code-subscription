@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 
 const SCREENSHOTS_DIR = path.join(process.cwd(), "screenshots");
-const MAX_AFTER_RETRIES = 5;
+const MAX_RETRIES = 6;
 const RETRY_DELAY_MS = 3000;
 
 let screenshotBrowser: Browser | null = null;
@@ -20,24 +20,13 @@ function ensureScreenshotsDir(): void {
   }
 }
 
-async function capturePageToFile(url: string, filepath: string): Promise<Buffer> {
+async function captureToFile(url: string, filepath: string): Promise<Buffer> {
   const browser = await getScreenshotBrowser();
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
   });
   const page = await context.newPage();
-  await page.route("**/*", (route) => {
-    route.continue({
-      headers: {
-        ...route.request().headers(),
-        "cache-control": "no-cache, no-store, must-revalidate",
-        pragma: "no-cache",
-      },
-    });
-  });
-  const separator = url.includes("?") ? "&" : "?";
-  const urlWithCacheBust = `${url}${separator}_cb=${Date.now()}`;
-  await page.goto(urlWithCacheBust, { waitUntil: "load", timeout: 15_000 });
+  await page.goto(url, { waitUntil: "load", timeout: 15_000 });
   await page.waitForTimeout(2000);
   const buffer = await page.screenshot({ path: filepath, fullPage: false });
   await page.close();
@@ -52,7 +41,7 @@ export async function takeScreenshot(
   try {
     ensureScreenshotsDir();
     const filepath = path.join(SCREENSHOTS_DIR, filename);
-    await capturePageToFile(url, filepath);
+    await captureToFile(url, filepath);
     return filename;
   } catch (error) {
     console.error("Screenshot failed", {
@@ -63,7 +52,7 @@ export async function takeScreenshot(
   }
 }
 
-export async function takeScreenshotAfterChange(
+export async function takeAfterScreenshot(
   url: string,
   filename: string,
   beforeFilename: string,
@@ -74,18 +63,19 @@ export async function takeScreenshotAfterChange(
     const beforePath = path.join(SCREENSHOTS_DIR, beforeFilename);
     const beforeBuffer = fs.readFileSync(beforePath);
     const afterPath = path.join(SCREENSHOTS_DIR, filename);
-    for (let attempt = 1; attempt <= MAX_AFTER_RETRIES; attempt++) {
-      const afterBuffer = await capturePageToFile(url, afterPath);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      onLog?.(`Taking after screenshot (attempt ${attempt}/${MAX_RETRIES})...`);
+      const afterBuffer = await captureToFile(url, afterPath);
       if (!beforeBuffer.equals(afterBuffer)) {
-        onLog?.(`After screenshot differs from before (attempt ${attempt}).`);
+        onLog?.(`Page changed detected on attempt ${attempt}.`);
         return filename;
       }
-      if (attempt < MAX_AFTER_RETRIES) {
-        onLog?.(`After screenshot identical to before (attempt ${attempt}/${MAX_AFTER_RETRIES}), retrying in ${RETRY_DELAY_MS / 1000}s...`);
+      if (attempt < MAX_RETRIES) {
+        onLog?.(`Page unchanged, retrying in ${RETRY_DELAY_MS / 1000}s...`);
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
-    onLog?.("After screenshot still identical after all retries — using last capture.");
+    onLog?.("Page unchanged after all retries — using last capture.");
     return filename;
   } catch (error) {
     console.error("After screenshot failed", {
